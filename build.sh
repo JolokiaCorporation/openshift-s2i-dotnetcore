@@ -21,7 +21,6 @@
 #       $ sudo ./build.sh
 #       $ sudo VERSIONS=1.0 ./build.sh
 #
-
 if [ "${DEBUG}" == "true" ]; then
   set -x
 fi
@@ -29,11 +28,7 @@ fi
 base_image_name() {
   local version=$1
   local v_no_dot=$(echo ${version} | sed 's/\.//g')
-  if [[ "$version" == 1* ]]; then
-    echo "dotnetcore-${v_no_dot}";
-  else
-    echo "dotnet-${v_no_dot}";
-  fi
+  echo "ubuntu-dotnet:${version}";
 }
 
 image_exists() {
@@ -60,8 +55,10 @@ build_image() {
       return
     fi
     pushd ${path} &>/dev/null
-      docker build -f ${docker_filename} -t ${name} .
+      /mnt/c/Program\ Files/Docker/Docker/resources/bin/docker.exe build -f ${docker_filename} -t ${name} .
       check_result_msg $? "Building Docker image ${name} FAILED!"
+	  /mnt/c/Program\ Files/Docker/Docker/resources/bin/docker.exe push ${name}
+	  check_result_msg $? "Pushing Docker image ${name} FAILED!"
     popd &>/dev/null
   fi
 }
@@ -75,65 +72,17 @@ test_images() {
   check_result_msg $? "Tests FAILED!"
 }
 
-# Default to CentOS when not on RHEL.
-if ! [[ `grep "Red Hat Enterprise Linux" /etc/redhat-release` ]]; then
-  export BUILD_CENTOS=true
-fi
-
-if [ "$BUILD_CENTOS" = "true" ]; then
   VERSIONS="${VERSIONS:-1.0 2.0}"
-  image_os="centos7"
-  image_prefix="dotnet"
+  image_os="ubuntu"
+  image_prefix="openshift"
   docker_filename="Dockerfile"
-else
-  VERSIONS="${VERSIONS:-1.0 1.1 2.0}"
-  image_os="rhel7"
-  image_prefix="dotnet"
-  docker_filename="Dockerfile.rhel7"
-fi
+  registry_name="docker-registry-default.apps.osp01.sntcca01.jolokia.net:443"
 
 for v in ${VERSIONS}; do
-  if [ "$v" == "1.0" ] || [ "$v" == "1.1" ]; then
-    build_name="${image_prefix}/$(base_image_name ${v})-${image_os}"
-
-    # Build the build image
-    build_image "${v}" "${docker_filename}" "${build_name}"
-    test_images "${v}/test" "${build_name}"
-
-    if [ "$TEST_OPENSHIFT" = "true" ]; then
-      build_name="registry.access.redhat.com/${build_name}:latest"
-      pushd ${v} &>/dev/null
-        echo "Running OpenShift tests on image ${build_name} ..."
-        IMAGE_NAME="${build_name}" OPENSHIFT_ONLY=true ./test/run
-        check_result_msg $? "Tests for image ${build_name} FAILED!"
-      popd &>/dev/null
-    fi
-  else
-    build_name="${image_prefix}/$(base_image_name ${v})-${image_os}"
-    runtime_name="${image_prefix}/$(base_image_name ${v})-runtime-${image_os}"
-
-    # Build the runtime image
-    build_image "${v}/runtime" "${docker_filename}" "${runtime_name}"
-    test_images "${v}/runtime/test" "${runtime_name}"
-
+    build_name="${registry_name}/${image_prefix}/$(base_image_name ${v})"
+   
     # Build the build image
     build_image "${v}/build" "${docker_filename}" "${build_name}"
-    test_images "${v}/build/test" "${build_name}" "${runtime_name}"
-
-    if [ "$TEST_OPENSHIFT" = "true" ]; then
-      build_name="registry.access.redhat.com/${build_name}:latest"
-      runtime_name="registry.access.redhat.com/${runtime_name}:latest"
-      pushd ${v} &>/dev/null
-        echo "Running OpenShift tests on image ${runtime_name} ..."
-        IMAGE_NAME="${runtime_name}" OPENSHIFT_ONLY=true ./runtime/test/run
-        check_result_msg $? "Tests for image ${runtime_name} FAILED!"
-
-        echo "Running OpenShift tests on image ${build_name} ..."
-        IMAGE_NAME="${build_name}" RUNTIME_IMAGE_NAME="${runtime_name}" OPENSHIFT_ONLY=true ./build/test/run
-        check_result_msg $? "Tests for image ${build_name} FAILED!"
-      popd &>/dev/null
-    fi
-  fi
 done
 
 echo "ALL builds and tests were successful!"
