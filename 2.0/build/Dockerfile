@@ -1,4 +1,4 @@
-FROM dotnet/dotnet-20-runtime-centos7
+FROM registry.centos.org/dotnet/dotnet-20-runtime-centos7
 # This image provides a .NET Core 2.0 environment you can use to run your .NET
 # applications.
 
